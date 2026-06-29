@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ved PDF converter v. 2.5</title>
+<title>Ved PDF converter v. 5.5</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
@@ -50,12 +50,12 @@ a{color:#ffb3b3;font-weight:bold}
   
 
   <div class="card">
-    <h2>1. Add Photos</h2>
+    <h2>1. Add the Photos</h2>
     <input id="photos" type="file" multiple accept="image/*" capture="environment">
 
     <div class="nameBox">
       <label>PDF name</label>
-      <input id="pdfName" type="text" placeholder="Example: homework-pages">
+      <input id="pdfName" type="text" placeholder="Example: property-document-image">
       <p class="small">“.pdf” will be added automatically dw</p>
     </div>
 
@@ -74,7 +74,7 @@ a{color:#ffb3b3;font-weight:bold}
   </div>
 </div>
 
-<div id="cropModal" class="modal">
+<div id="croppingModel" class="modal">
   <div class="modalBox">
     <h2>Cropthe Photo</h2>
     <p class="small">Drag the box to crop photo</p>
@@ -91,7 +91,7 @@ a{color:#ffb3b3;font-weight:bold}
 const preview=document.getElementById("preview");
 const input=document.getElementById("photos");
 const pdfNameInput=document.getElementById("pdfName");
-const cropModal=document.getElementById("cropModal");
+const croppingModel=document.getElementById("croppingModel");
 const cropImage=document.getElementById("cropImage");
 
 let files=[];
@@ -133,7 +133,7 @@ function removePhoto(i){
 function openCrop(i){
   cropIndex=i;
   cropImage.src=imageData[i];
-  cropModal.style.display="flex";
+  croppingModel.style.display="flex";
 
   setTimeout(()=>{
     if(cropper) cropper.destroy();
@@ -162,7 +162,7 @@ function saveCrop(){
 }
 
 function closeCrop(){
-  cropModal.style.display="none";
+  croppingModel.style.display="none";
   if(cropper){cropper.destroy();cropper=null;}
   cropIndex=null;
 }
