@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ved PDF converter v. 10 - IndexedDB</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#111,#420000);color:#fff;min-height:100vh}
+.wrap{max-width:1000px;margin:auto;padding:25px}
+h1{text-align:center;margin-bottom:5px}
+.sub{text-align:center;color:#ddd;margin-bottom:25px}
+.card{background:#ffffff12;border:1px solid #ffffff22;border-radius:18px;padding:20px;margin:18px 0;box-shadow:0 10px 30px #0005}
+input[type=file],input[type=text]{width:100%;padding:15px;border-radius:12px;background:#0004;color:#fff;border:1px solid #ffffff33;margin:8px 0}
+input[type=file]{border:2px dashed #ff4444}
+.preview{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin:15px 0}
+.thumb{position:relative;background:#0005;border-radius:12px;padding:8px}
+.thumb img{width:100%;height:165px;object-fit:cover;border-radius:10px}
+.thumb button{width:100%;margin-top:7px}
+button{padding:12px 18px;border:none;border-radius:10px;background:#e11;color:#fff;font-weight:bold;cursor:pointer;margin:4px}
+button:hover{background:#ff4444}
+button:disabled{opacity:.5;cursor:not-allowed}
+.danger{background:#666}
+.danger:hover{background:#777}
+.secondary{background:#222;border:1px solid #ffffff33}
+.secondary:hover{background:#333}
+ul{padding:0}
+li{background:#0003;padding:12px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;margin:8px 0;gap:10px;flex-wrap:wrap}
+a{color:#ffb3b3;font-weight:bold}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.nameBox{margin:12px 0}
+.small{font-size:.9rem;color:#ddd}
+.modal{display:none;position:fixed;z-index:10;inset:0;background:#000c;align-items:center;justify-content:center;padding:20px}
+.modalBox{background:#171717;border:1px solid #ffffff33;border-radius:18px;width:min(900px,95vw);max-height:92vh;padding:18px;overflow:auto}
+.cropArea{max-height:65vh;margin:10px 0}
+#cropImage{display:block;max-width:100%;max-height:65vh}
+.checkbox{transform:scale(1.25);margin-right:8px}
+</style>
+
+</head>
+
+<body>
+<div class="wrap">
+  <h1>Veds pdf convrter</h1>
+  <p class="sub">Now uses IndexedDB so saved PDF storage is much larger than localStorage.</p>
+  
+
+  <div class="card">
+    <h2>1. Add the Photos</h2>
+    <input id="photos" type="file" multiple accept="image/*" capture="environment">
+
+    <div class="nameBox">
+      <label>PDF name</label>
+      <input id="pdfName" type="text" placeholder="Example: property-document-image">
+      <p class="small">“.pdf” will be added automatically dw</p>
+    </div>
+
+    <div id="preview" class="preview"></div>
+
+    <button onclick="createPDF()">Create PDF</button>
+  </div>
+
+  <div class="card">
+    <h2>2. Saved PDFs</h2>
+    <button onclick="mergeSelectedPDFs()">Merge Selected PDFs</button>
+    <button class="secondary" onclick="selectAllPDFs(true)">Select All</button>
+    <button class="secondary" onclick="selectAllPDFs(false)">Unselect All</button>
+    <button class="danger" onclick="clearPDFs()">Clear</button>
+    <ul id="list"></ul>
+  </div>
+</div>
+
+<div id="croppingModel" class="modal">
+  <div class="modalBox">
+    <h2>Cropthe Photo</h2>
+    <p class="small">Drag the box to crop photo</p>
+    <div class="cropArea">
+      <img id="cropImage">
+    </div>
+    <button onclick="saveCrop()">Save Crop</button>
+    <button class="secondary" onclick="rotateCrop()">Rotate</button>
+    <button class="danger" onclick="closeCrop()">Cancel</button>
+  </div>
+</div>
+
+<script>
+const preview=document.getElementById("preview");
+const input=document.getElementById("photos");
+const pdfNameInput=document.getElementById("pdfName");
+const croppingModel=document.getElementById("croppingModel");
+const cropImage=document.getElementById("cropImage");
+
+let files=[];
+let imageData=[];
+let imageTypes=[];
+let cropper=null;
+let cropIndex=null;
+let db=null;
+let savedPDFs=[];
+let downloadUrls=[];
+
+const DB_NAME="VedPDFConverterDB";
+const DB_VERSION=1;
+const STORE_NAME="pdfs";
+
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(DB_NAME,DB_VERSION);
+    req.onupgradeneeded=e=>{
+      const database=e.target.result;
+      if(!database.objectStoreNames.contains(STORE_NAME)){
+        const store=database.createObjectStore(STORE_NAME,{keyPath:"id",autoIncrement:true});
+        store.createIndex("order","order",{unique:false});
+        store.createIndex("createdAt","createdAt",{unique:false});
+      }
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function tx(mode="readonly"){
+  return db.transaction(STORE_NAME,mode).objectStore(STORE_NAME);
+}
+
+function storeAdd(item){
+  return new Promise((resolve,reject)=>{
+    const req=tx("readwrite").add(item);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function storePut(item){
+  return new Promise((resolve,reject)=>{
+    const req=tx("readwrite").put(item);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function storeDelete(id){
+  return new Promise((resolve,reject)=>{
+    const req=tx("readwrite").delete(Number(id));
+    req.onsuccess=()=>resolve();
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function storeClear(){
+  return new Promise((resolve,reject)=>{
+    const req=tx("readwrite").clear();
+    req.onsuccess=()=>resolve();
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function storeGetAll(){
+  return new Promise((resolve,reject)=>{
+    const req=tx().getAll();
+    req.onsuccess=()=>resolve(req.result||[]);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function dataURIToBlob(dataURI){
+  const parts=dataURI.split(",");
+  const mime=(parts[0].match(/:(.*?);/)||[])[1]||"application/pdf";
+  const bin=atob(parts[1]);
+  const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  return new Blob([bytes],{type:mime});
+}
+
+async function migrateOldLocalStorage(){
+  const old=localStorage.savedPDFs;
+  if(!old)return;
+  try{
+    const arr=JSON.parse(old);
+    if(Array.isArray(arr)&&arr.length){
+      const existing=await storeGetAll();
+      if(!existing.length){
+        for(let i=0;i<arr.length;i++){
+          const p=arr[i];
+          if(p&&p.name&&p.data){
+            await storeAdd({
+              name:p.name,
+              blob:dataURIToBlob(p.data),
+              createdAt:Date.now()+i,
+              order:i
+            });
+          }
+        }
+      }
+    }
+    localStorage.removeItem("savedPDFs");
+  }catch(e){
+    console.warn("Old PDF migration skipped",e);
+  }
+}
+
+function formatSize(bytes){
+  if(!bytes)return "";
+  const units=["B","KB","MB","GB"];
+  let size=bytes;
+  let i=0;
+  while(size>=1024&&i<units.length-1){size/=1024;i++;}
+  return `${size.toFixed(size>=10||i===0?0:1)} ${units[i]}`;
+}
+
+async function loadSaved(){
+  savedPDFs=await storeGetAll();
+  savedPDFs.sort((a,b)=>(a.order??0)-(b.order??0)||a.id-b.id);
+}
+
+input.onchange=async()=>{
+  files=[...input.files];
+  imageData=[];
+  imageTypes=[];
+  preview.innerHTML="";
+
+  for(const f of files){
+    imageData.push(await fileData(f));
+    imageTypes.push((f.type||"image/jpeg").includes("png")?"PNG":"JPEG");
+  }
+
+  renderPreview();
+};
+
+function renderPreview(){
+  preview.innerHTML="";
+  imageData.forEach((src,i)=>{
+    let box=document.createElement("div");
+    box.className="thumb";
+    box.innerHTML=`
+      <img src="${src}">
+      <button type="button" onclick="openCrop(${i})">Crop</button>
+      <button type="button" class="danger" onclick="removePhoto(${i})">Remove</button>
+    `;
+    preview.appendChild(box);
+  });
+}
+
+function removePhoto(i){
+  imageData.splice(i,1);
+  renderPreview();
+}
+
+function openCrop(i){
+  cropIndex=i;
+  cropImage.src=imageData[i];
+  croppingModel.style.display="flex";
+
+  setTimeout(()=>{
+    if(cropper) cropper.destroy();
+    cropper=new Cropper(cropImage,{
+      viewMode:1,
+      autoCropArea:0.9,
+      background:false,
+      responsive:true
+    });
+  },100);
+}
+
+function rotateCrop(){
+  if(cropper) cropper.rotate(90);
+}
+
+function saveCrop(){
+  if(!cropper || cropIndex===null)return;
+  const canvas=cropper.getCroppedCanvas({
+    imageSmoothingEnabled:true,
+    imageSmoothingQuality:"high"
+  });
+  imageData[cropIndex]=canvas.toDataURL("image/jpeg",0.95);
+  closeCrop();
+  renderPreview();
+}
+
+function closeCrop(){
+  croppingModel.style.display="none";
+  if(cropper){cropper.destroy();cropper=null;}
+  cropIndex=null;
+}
+
+function cleanFileName(name){
+  name=(name||"").trim();
+  if(!name) name="PDF-"+Date.now();
+  name=name.replace(/[\\/:*?"<>|]/g,"-");
+  if(!name.toLowerCase().endsWith(".pdf")) name += ".pdf";
+  return name;
+}
+
+async function render(){
+  const list=document.getElementById("list");
+  list.innerHTML="";
+  downloadUrls.forEach(URL.revokeObjectURL);
+  downloadUrls=[];
+  await loadSaved();
+
+  if(!savedPDFs.length){
+    list.innerHTML="<li>No PDFs saved.</li>";
+    return;
+  }
+
+  savedPDFs.forEach((p,i)=>{
+    const url=URL.createObjectURL(p.blob);
+    downloadUrls.push(url);
+    let li=document.createElement("li");
+    li.draggable=true;
+    li.dataset.index=i;
+    li.dataset.id=p.id;
+    li.innerHTML=`
+      <span class="row">
+        <input class="checkbox pdfCheck" type="checkbox" data-id="${p.id}">
+        <span>${p.name}</span>
+        <span class="small">${formatSize(p.blob?.size)}</span>
+      </span>
+      <span>
+        <a href="${url}" download="${p.name}">Download</a>
+        <button class="danger" onclick="del(${p.id})">Delete</button>
+      </span>
+    `;
+    list.appendChild(li);
+  });
+}
+
+function selectAllPDFs(value){
+  document.querySelectorAll(".pdfCheck").forEach(c=>c.checked=value);
+}
+
+async function del(id){
+  await storeDelete(id);
+  await render();
+}
+
+function fileData(f){
+  return new Promise(r=>{
+    let fr=new FileReader();
+    fr.onload=()=>r(fr.result);
+    fr.readAsDataURL(f);
+  });
+}
+
+function imgLoad(src){
+  return new Promise(r=>{
+    let i=new Image();
+    i.onload=()=>r(i);
+    i.src=src;
+  });
+}
+
+async function createPDF(){
+  if(!imageData.length)return alert("Choose photos first");
+
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF("p","pt","a4");
+  const W=pdf.internal.pageSize.getWidth();
+  const H=pdf.internal.pageSize.getHeight();
+
+  for(let n=0;n<imageData.length;n++){
+    let d=imageData[n];
+    let img=await imgLoad(d);
+
+    if(n)pdf.addPage();
+
+    let mw=W-40;
+    let mh=H-40;
+    let w=mw;
+    let h=img.height*w/img.width;
+
+    if(h>mh){
+      h=mh;
+      w=img.width*h/img.height;
+    }
+
+    pdf.addImage(d,"JPEG",(W-w)/2,(H-h)/2,w,h);
+  }
+
+  const blob=pdf.output("blob");
+  const name=cleanFileName(pdfNameInput.value);
+  await loadSaved();
+  await storeAdd({
+    name,
+    blob,
+    createdAt:Date.now(),
+    order:savedPDFs.length
+  });
+
+  preview.innerHTML="";
+  input.value="";
+  pdfNameInput.value="";
+  files=[];
+  imageData=[];
+  await render();
+}
+
+async function mergeSelectedPDFs(){
+  await loadSaved();
+  const checks=[...document.querySelectorAll(".pdfCheck:checked")];
+  const ids=checks.map(c=>Number(c.dataset.id));
+
+  if(ids.length<2)return alert("Select at least 2 PDFs to merge.");
+
+  const merged=await PDFLib.PDFDocument.create();
+
+  for(const id of ids){
+    const p=savedPDFs.find(x=>x.id===id);
+    if(!p)continue;
+    const bytes=new Uint8Array(await p.blob.arrayBuffer());
+    const doc=await PDFLib.PDFDocument.load(bytes);
+    const pages=await merged.copyPages(doc,doc.getPageIndices());
+    pages.forEach(pg=>merged.addPage(pg));
+  }
+
+  const bytes=await merged.save();
+  const blob=new Blob([bytes],{type:"application/pdf"});
+  const url=URL.createObjectURL(blob);
+
+  const name=prompt("Name the merged PDF:", "Merged.pdf") || "Merged.pdf";
+  const finalName=cleanFileName(name);
+
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=finalName;
+  a.click();
+
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function clearPDFs(){
+  if(confirm("Delete all saved PDFs?")){
+    await storeClear();
+    await render();
+  }
+}
+
+async function saveOrder(){
+  for(let i=0;i<savedPDFs.length;i++){
+    savedPDFs[i].order=i;
+    await storePut(savedPDFs[i]);
+  }
+}
+
+document.addEventListener("dragstart",e=>{
+  const li=e.target.closest("li[draggable]");
+  if(li)e.dataTransfer.setData("text/plain",li.dataset.index);
+});
+document.addEventListener("dragover",e=>{
+  if(e.target.closest("li[draggable]"))e.preventDefault();
+});
+document.addEventListener("drop",async e=>{
+  const t=e.target.closest("li[draggable]");
+  if(!t)return;
+  e.preventDefault();
+  const f=Number(e.dataTransfer.getData("text/plain"));
+  const to=Number(t.dataset.index);
+  if(f===to)return;
+  const [m]=savedPDFs.splice(f,1);
+  savedPDFs.splice(to,0,m);
+  await saveOrder();
+  await render();
+});
+
+(async function init(){
+  if(!("indexedDB" in window)){
+    alert("Your browser does not support IndexedDB. Please use Chrome, Edge, Firefox, or Safari.");
+    return;
+  }
+  db=await openDB();
+  await migrateOldLocalStorage();
+  await render();
+})();
+</script>
+</body>
+</html>
