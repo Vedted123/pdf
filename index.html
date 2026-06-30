@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ved PDF Scanner v. 11.0</title>
+<title>Ved PDF Scanner v. 12.0</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
@@ -61,11 +61,11 @@ a{color:#ffb3b3;font-weight:bold}
 <body>
 <div class="wrap">
   <h1>Ved PDF Scanner</h1>
-  <p class="sub">Upload photos like before, or use Scan Document to capture paper-only pages.</p>
+  
   
 
   <div class="card">
-    <h2>1. Build Your PDF</h2>
+    <h2>1. PDF </h2>
     <div class="tabs">
       <button id="uploadTab" class="tabBtn active" onclick="setMode('upload')">Add Photos</button>
       <button id="scanTab" class="tabBtn" onclick="setMode('scan')">Scan Document</button>
@@ -74,12 +74,12 @@ a{color:#ffb3b3;font-weight:bold}
     <div id="uploadMode" class="mode active">
       <h3>Upload Photos</h3>
       <input id="photos" type="file" multiple accept="image/*" capture="environment">
-      <p class="small">This works the same as before. Choose images, crop if needed, then create the PDF.</p>
+      
     </div>
 
     <div id="scanMode" class="mode">
       <h3>Scan Document</h3>
-      <p class="small">Start the camera, place the paper inside the red guide, then capture. The app will try to isolate only the paper before adding it as a PDF page.</p>
+      <p class="small">Put the paper between the red border and make sure its visible </p>
       <div class="scannerShell">
         <div class="videoWrap">
           <video id="cameraVideo" autoplay playsinline></video>
@@ -88,8 +88,8 @@ a{color:#ffb3b3;font-weight:bold}
         </div>
         <div class="scannerControls">
           <button onclick="startScanner()">Start Camera</button>
-          <button onclick="captureScan()">Capture Page</button>
-          <button class="secondary" onclick="stopScanner()">Stop Camera</button>
+          <button onclick="captureScan()">Take picture</button>
+          <button class="secondary" onclick="stopScanner()">Turn off Camera</button>
         </div>
       </div>
       <canvas id="captureCanvas" style="display:none"></canvas>
