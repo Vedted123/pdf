@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ved PDF Scanner v. 11.0</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#111,#420000);color:#fff;min-height:100vh}
+.wrap{max-width:1000px;margin:auto;padding:25px}
+h1{text-align:center;margin-bottom:5px}
+.sub{text-align:center;color:#ddd;margin-bottom:25px}
+.card{background:#ffffff12;border:1px solid #ffffff22;border-radius:18px;padding:20px;margin:18px 0;box-shadow:0 10px 30px #0005}
+input[type=file],input[type=text]{width:100%;padding:15px;border-radius:12px;background:#0004;color:#fff;border:1px solid #ffffff33;margin:8px 0}
+input[type=file]{border:2px dashed #ff4444}
+.preview{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin:15px 0}
+.thumb{position:relative;background:#0005;border-radius:12px;padding:8px}
+.thumb img{width:100%;height:165px;object-fit:cover;border-radius:10px}
+.thumb button{width:100%;margin-top:7px}
+button{padding:12px 18px;border:none;border-radius:10px;background:#e11;color:#fff;font-weight:bold;cursor:pointer;margin:4px}
+button:hover{background:#ff4444}
+button:disabled{opacity:.5;cursor:not-allowed}
+.danger{background:#666}
+.danger:hover{background:#777}
+.secondary{background:#222;border:1px solid #ffffff33}
+.secondary:hover{background:#333}
+ul{padding:0}
+li{background:#0003;padding:12px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;margin:8px 0;gap:10px;flex-wrap:wrap}
+a{color:#ffb3b3;font-weight:bold}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.nameBox{margin:12px 0}
+.small{font-size:.9rem;color:#ddd}
+.modal{display:none;position:fixed;z-index:10;inset:0;background:#000c;align-items:center;justify-content:center;padding:20px}
+.modalBox{background:#171717;border:1px solid #ffffff33;border-radius:18px;width:min(900px,95vw);max-height:92vh;padding:18px;overflow:auto}
+.cropArea{max-height:65vh;margin:10px 0}
+#cropImage{display:block;max-width:100%;max-height:65vh}
+
+.tabs{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 18px}
+.tabBtn{background:#222;border:1px solid #ffffff33}
+.tabBtn.active{background:#e11}
+.mode{display:none}
+.mode.active{display:block}
+.scannerShell{background:#0008;border:1px solid #ffffff22;border-radius:18px;overflow:hidden;margin:12px 0}
+.videoWrap{position:relative;background:#000;min-height:260px;display:flex;align-items:center;justify-content:center}
+#cameraVideo{width:100%;max-height:70vh;display:none}
+.scanFrame{position:absolute;inset:8%;border:3px solid #ff4444;border-radius:16px;box-shadow:0 0 0 999px #0005;pointer-events:none}
+.scanLine{display:none;position:absolute;left:8%;right:8%;top:8%;height:4px;background:#ff4444;box-shadow:0 0 18px #ff4444,0 0 35px #fff;border-radius:999px;pointer-events:none;z-index:3}
+.videoWrap.scanning .scanLine{display:block;animation:scanSweep 1.15s ease-in-out infinite}
+.videoWrap.scanning .scanFrame{border-color:#fff;box-shadow:0 0 0 999px #0007,0 0 22px #ff4444}
+@keyframes scanSweep{0%{top:8%;opacity:.15}12%{opacity:1}50%{top:91%;opacity:1}100%{top:8%;opacity:.15}}
+.scanHint{position:absolute;bottom:12px;left:12px;right:12px;background:#0009;border-radius:12px;padding:10px;text-align:center;color:#fff}
+.scannerControls{padding:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.status{color:#ffcccc;text-align:center;margin:8px 0;min-height:20px}
+.pageBadge{position:absolute;top:10px;left:10px;background:#e11;padding:5px 9px;border-radius:999px;font-size:.8rem;font-weight:bold}
+.checkbox{transform:scale(1.25);margin-right:8px}
+</style>
+
+</head>
+
+<body>
+<div class="wrap">
+  <h1>Ved PDF Scanner</h1>
+  <p class="sub">Upload photos like before, or use Scan Document to capture paper-only pages.</p>
+  
+
+  <div class="card">
+    <h2>1. Build Your PDF</h2>
+    <div class="tabs">
+      <button id="uploadTab" class="tabBtn active" onclick="setMode('upload')">Add Photos</button>
+      <button id="scanTab" class="tabBtn" onclick="setMode('scan')">Scan Document</button>
+    </div>
+
+    <div id="uploadMode" class="mode active">
+      <h3>Upload Photos</h3>
+      <input id="photos" type="file" multiple accept="image/*" capture="environment">
+      <p class="small">This works the same as before. Choose images, crop if needed, then create the PDF.</p>
+    </div>
+
+    <div id="scanMode" class="mode">
+      <h3>Scan Document</h3>
+      <p class="small">Start the camera, place the paper inside the red guide, then capture. The app will try to isolate only the paper before adding it as a PDF page.</p>
+      <div class="scannerShell">
+        <div class="videoWrap">
+          <video id="cameraVideo" autoplay playsinline></video>
+          <div class="scanFrame"></div>
+          <div class="scanLine" id="scanLine"></div>
+          <div class="scanHint" id="scanHint">Camera is off</div>
+        </div>
+        <div class="scannerControls">
+          <button onclick="startScanner()">Start Camera</button>
+          <button onclick="captureScan()">Capture Page</button>
+          <button class="secondary" onclick="stopScanner()">Stop Camera</button>
+        </div>
+      </div>
+      <canvas id="captureCanvas" style="display:none"></canvas>
+      <p id="scanStatus" class="status"></p>
+    </div>
+
+    <div class="nameBox">
+      <label>PDF name</label>
+      <input id="pdfName" type="text" placeholder="Example: property-document-image">
+      <p class="small">“.pdf” will be added automatically dw</p>
+    </div>
+
+    <h3>PDF Pages</h3>
+    <div id="preview" class="preview"></div>
+
+    <button onclick="createPDF()">Create PDF</button>
+  </div>
+
+  <div class="card">
+    <h2>2. Saved PDFs</h2>
+    <button onclick="mergeSelectedPDFs()">Merge Selected PDFs</button>
+    <button class="secondary" onclick="selectAllPDFs(true)">Select All</button>
+    <button class="secondary" onclick="selectAllPDFs(false)">Unselect All</button>
+    <button class="danger" onclick="clearPDFs()">Clear</button>
+    <ul id="list"></ul>
+  </div>
+</div>
+
+<div id="croppingModel" class="modal">
+  <div class="modalBox">
+    <h2>Crop the Photo</h2>
+    <p class="small">Drag the box to crop photo</p>
+    <div class="cropArea">
+      <img id="cropImage">
+    </div>
+    <button onclick="saveCrop()">Save Crop</button>
+    <button class="secondary" onclick="rotateCrop()">Rotate</button>
+    <button class="danger" onclick="closeCrop()">Cancel</button>
+  </div>
+</div>
+
+<script>
+const preview=document.getElementById("preview");
+const input=document.getElementById("photos");
+const pdfNameInput=document.getElementById("pdfName");
+const croppingModel=document.getElementById("croppingModel");
+const cropImage=document.getElementById("cropImage");
+const cameraVideo=document.getElementById("cameraVideo");
+const captureCanvas=document.getElementById("captureCanvas");
+const scanStatus=document.getElementById("scanStatus");
+const scanHint=document.getElementById("scanHint");
+const videoWrap=document.querySelector(".videoWrap");
+
+let files=[];
+let imageData=[];
+let imageTypes=[];
+let cropper=null;
+let cropIndex=null;
+let db=null;
+let savedPDFs=[];
+let downloadUrls=[];
+let scannerStream=null;
+
+const DB_NAME="VedPDFConverterDB";
+const DB_VERSION=1;
+const STORE_NAME="pdfs";
+
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(DB_NAME,DB_VERSION);
+    req.onupgradeneeded=e=>{
+      const database=e.target.result;
+      if(!database.objectStoreNames.contains(STORE_NAME)){
+        const store=database.createObjectStore(STORE_NAME,{keyPath:"id",autoIncrement:true});
+        store.createIndex("order","order",{unique:false});
+        store.createIndex("createdAt","createdAt",{unique:false});
+      }
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function tx(mode="readonly"){
+  return db.transaction(STORE_NAME,mode).objectStore(STORE_NAME);
+}
+
+function storeAdd(item){
+  return new Promise((resolve,reject)=>{
+    const req=tx("readwrite").add(item);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function storePut(item){
+  return new Promise((resolve,reject)=>{
+    const req=tx("readwrite").put(item);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function storeDelete(id){
+  return new Promise((resolve,reject)=>{
+    const req=tx("readwrite").delete(Number(id));
+    req.onsuccess=()=>resolve();
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function storeClear(){
+  return new Promise((resolve,reject)=>{
+    const req=tx("readwrite").clear();
+    req.onsuccess=()=>resolve();
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function storeGetAll(){
+  return new Promise((resolve,reject)=>{
+    const req=tx().getAll();
+    req.onsuccess=()=>resolve(req.result||[]);
+    req.onerror=()=>reject(req.error);
+  });
+}
+
+function dataURIToBlob(dataURI){
+  const parts=dataURI.split(",");
+  const mime=(parts[0].match(/:(.*?);/)||[])[1]||"application/pdf";
+  const bin=atob(parts[1]);
+  const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  return new Blob([bytes],{type:mime});
+}
+
+async function migrateOldLocalStorage(){
+  const old=localStorage.savedPDFs;
+  if(!old)return;
+  try{
+    const arr=JSON.parse(old);
+    if(Array.isArray(arr)&&arr.length){
+      const existing=await storeGetAll();
+      if(!existing.length){
+        for(let i=0;i<arr.length;i++){
+          const p=arr[i];
+          if(p&&p.name&&p.data){
+            await storeAdd({
+              name:p.name,
+              blob:dataURIToBlob(p.data),
+              createdAt:Date.now()+i,
+              order:i
+            });
+          }
+        }
+      }
+    }
+    localStorage.removeItem("savedPDFs");
+  }catch(e){
+    console.warn("Old PDF migration skipped",e);
+  }
+}
+
+function formatSize(bytes){
+  if(!bytes)return "";
+  const units=["B","KB","MB","GB"];
+  let size=bytes;
+  let i=0;
+  while(size>=1024&&i<units.length-1){size/=1024;i++;}
+  return `${size.toFixed(size>=10||i===0?0:1)} ${units[i]}`;
+}
+
+async function loadSaved(){
+  savedPDFs=await storeGetAll();
+  savedPDFs.sort((a,b)=>(a.order??0)-(b.order??0)||a.id-b.id);
+}
+
+function setMode(mode){
+  document.getElementById("uploadMode").classList.toggle("active",mode==="upload");
+  document.getElementById("scanMode").classList.toggle("active",mode==="scan");
+  document.getElementById("uploadTab").classList.toggle("active",mode==="upload");
+  document.getElementById("scanTab").classList.toggle("active",mode==="scan");
+}
+
+async function startScanner(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    alert("Camera access is not supported in this browser.");
+    return;
+  }
+  try{
+    stopScanner();
+    scannerStream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:"environment"}, width:{ideal:1920}, height:{ideal:1080}},
+      audio:false
+    });
+    cameraVideo.srcObject=scannerStream;
+    cameraVideo.style.display="block";
+    scanHint.textContent="Place the paper inside the red guide, then tap Capture Page.";
+    scanStatus.textContent="Camera ready.";
+  }catch(err){
+    console.error(err);
+    alert("Could not start the camera. On phones, open this page using HTTPS or localhost and allow camera permission.");
+  }
+}
+
+function stopScanner(){
+  if(scannerStream){
+    scannerStream.getTracks().forEach(t=>t.stop());
+    scannerStream=null;
+  }
+  if(cameraVideo){
+    cameraVideo.srcObject=null;
+    cameraVideo.style.display="none";
+  }
+  if(scanHint) scanHint.textContent="Camera is off";
+}
+
+async function captureScan(){
+  if(!scannerStream || !cameraVideo.videoWidth){
+    alert("Start the camera first.");
+    return;
+  }
+
+  videoWrap.classList.add("scanning");
+  scanHint.textContent="Scanning paper... hold steady";
+  scanStatus.textContent="Scanning and isolating the document...";
+  await new Promise(r=>setTimeout(r,650));
+
+  const c=captureCanvas;
+  c.width=cameraVideo.videoWidth;
+  c.height=cameraVideo.videoHeight;
+  const ctx=c.getContext("2d",{willReadFrequently:true});
+  ctx.drawImage(cameraVideo,0,0,c.width,c.height);
+
+  let isolated;
+  try{
+    isolated=autoIsolatePaper(c);
+  }catch(err){
+    console.error(err);
+    isolated=cropToScanGuide(c).toDataURL("image/jpeg",0.95);
+  }
+
+  imageData.push(isolated);
+  imageTypes.push("JPEG");
+  renderPreview();
+
+  videoWrap.classList.remove("scanning");
+  scanHint.textContent="Page captured. Capture the next page or create the PDF.";
+  scanStatus.textContent=`Captured page ${imageData.length}. The scan was cropped to the document guide and cleaned. Use Crop if you want to adjust it.`;
+}
+
+function cropToScanGuide(sourceCanvas){
+  const w=sourceCanvas.width;
+  const h=sourceCanvas.height;
+  const x=Math.round(w*0.08);
+  const y=Math.round(h*0.08);
+  const cw=Math.round(w*0.84);
+  const ch=Math.round(h*0.84);
+  const out=document.createElement("canvas");
+  out.width=cw;
+  out.height=ch;
+  out.getContext("2d").drawImage(sourceCanvas,x,y,cw,ch,0,0,cw,ch);
+  return out;
+}
+
+function autoIsolatePaper(sourceCanvas){
+  // Step 1: crop to the guide first. This keeps the scan fast and avoids random background outside the frame.
+  const guide=cropToScanGuide(sourceCanvas);
+  const w=guide.width;
+  const h=guide.height;
+
+  // Step 2: detect the paper inside the guide using a small working canvas.
+  // This is much more reliable than the older version because it looks for the largest bright/low-saturation object.
+  const maxSide=420;
+  const scale=Math.min(1,maxSide/Math.max(w,h));
+  const sw=Math.max(1,Math.round(w*scale));
+  const sh=Math.max(1,Math.round(h*scale));
+  const small=document.createElement("canvas");
+  small.width=sw;
+  small.height=sh;
+  const sctx=small.getContext("2d",{willReadFrequently:true});
+  sctx.drawImage(guide,0,0,sw,sh);
+  const img=sctx.getImageData(0,0,sw,sh);
+  const data=img.data;
+
+  const grays=[];
+  const borderVals=[];
+  const border=Math.max(3,Math.floor(Math.min(sw,sh)*0.045));
+  for(let y=0;y<sh;y++){
+    for(let x=0;x<sw;x++){
+      const i=(y*sw+x)*4;
+      const r=data[i], g=data[i+1], b=data[i+2];
+      const gray=(r+g+b)/3;
+      grays.push(gray);
+      if(x<border||x>=sw-border||y<border||y>=sh-border) borderVals.push(gray);
+    }
+  }
+  grays.sort((a,b)=>a-b);
+  borderVals.sort((a,b)=>a-b);
+  const p55=grays[Math.floor(grays.length*0.55)]||120;
+  const p70=grays[Math.floor(grays.length*0.70)]||150;
+  const p82=grays[Math.floor(grays.length*0.82)]||180;
+  const bg=borderVals[Math.floor(borderVals.length*0.50)]||90;
+
+  // White paper is usually brighter and less colorful than the table/floor/background.
+  // The threshold adapts to both dark and bright rooms.
+  const threshold=Math.max(92,Math.min(218,Math.max(bg+18,Math.min(p82,p70+18),p55+18)));
+  const mask=new Uint8Array(sw*sh);
+
+  for(let y=0;y<sh;y++){
+    for(let x=0;x<sw;x++){
+      const i=(y*sw+x)*4;
+      const r=data[i], g=data[i+1], b=data[i+2];
+      const gray=(r+g+b)/3;
+      const spread=Math.max(r,g,b)-Math.min(r,g,b);
+      const isBrightPaper=gray>threshold && spread<125;
+      const isPaperAgainstDarkBg=gray>bg+28 && gray>105 && spread<150;
+      mask[y*sw+x]=(isBrightPaper||isPaperAgainstDarkBg)?1:0;
+    }
+  }
+
+  // Step 3: clean tiny noise so the largest component is the page, not random highlights.
+  cleanMask(mask,sw,sh);
+  cleanMask(mask,sw,sh);
+
+  const bounds=largestMaskComponent(mask,sw,sh);
+  if(!bounds){
+    improveDocumentLook(guide);
+    return guide.toDataURL("image/jpeg",0.95);
+  }
+
+  const bw=bounds.maxX-bounds.minX+1;
+  const bh=bounds.maxY-bounds.minY+1;
+  const areaRatio=bounds.count/(sw*sh);
+  const boxRatio=(bw*bh)/(sw*sh);
+  const confident=areaRatio>0.035 && boxRatio>0.12 && bw>sw*0.28 && bh>sh*0.28;
+
+  if(!confident){
+    improveDocumentLook(guide);
+    return guide.toDataURL("image/jpeg",0.95);
+  }
+
+  // Step 4: convert detected bounds back to full resolution and crop only that paper area.
+  const pad=Math.round(Math.min(w,h)*0.025);
+  let minX=Math.max(0,Math.floor(bounds.minX/scale)-pad);
+  let minY=Math.max(0,Math.floor(bounds.minY/scale)-pad);
+  let maxX=Math.min(w,Math.ceil((bounds.maxX+1)/scale)+pad);
+  let maxY=Math.min(h,Math.ceil((bounds.maxY+1)/scale)+pad);
+
+  const cropW=Math.max(1,maxX-minX);
+  const cropH=Math.max(1,maxY-minY);
+  const out=document.createElement("canvas");
+  out.width=cropW;
+  out.height=cropH;
+  const outCtx=out.getContext("2d");
+  outCtx.drawImage(guide,minX,minY,cropW,cropH,0,0,cropW,cropH);
+  improveDocumentLook(out);
+  return out.toDataURL("image/jpeg",0.95);
+}
+
+function cleanMask(mask,w,h){
+  const copy=mask.slice();
+  for(let y=1;y<h-1;y++){
+    for(let x=1;x<w-1;x++){
+      let count=0;
+      for(let yy=-1;yy<=1;yy++){
+        for(let xx=-1;xx<=1;xx++){
+          count+=copy[(y+yy)*w+(x+xx)];
+        }
+      }
+      mask[y*w+x]=count>=5?1:0;
+    }
+  }
+}
+
+function largestMaskComponent(mask,w,h){
+  const seen=new Uint8Array(w*h);
+  let best=null;
+  const qx=[];
+  const qy=[];
+
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const start=y*w+x;
+      if(!mask[start]||seen[start]) continue;
+
+      let minX=x,maxX=x,minY=y,maxY=y,count=0;
+      qx.length=0; qy.length=0;
+      qx.push(x); qy.push(y); seen[start]=1;
+      let head=0;
+
+      while(head<qx.length){
+        const cx=qx[head], cy=qy[head]; head++;
+        count++;
+        if(cx<minX)minX=cx; if(cx>maxX)maxX=cx;
+        if(cy<minY)minY=cy; if(cy>maxY)maxY=cy;
+
+        const neighbors=[[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]];
+        for(const [nx,ny] of neighbors){
+          if(nx<0||ny<0||nx>=w||ny>=h) continue;
+          const ni=ny*w+nx;
+          if(mask[ni]&&!seen[ni]){
+            seen[ni]=1;
+            qx.push(nx); qy.push(ny);
+          }
+        }
+      }
+
+      if(!best||count>best.count){
+        best={minX,maxX,minY,maxY,count};
+      }
+    }
+  }
+  return best;
+}
+function improveDocumentLook(canvas){
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
+  const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+  const d=img.data;
+  for(let i=0;i<d.length;i+=4){
+    let r=d[i], g=d[i+1], b=d[i+2];
+    // Light document-cleanup without changing the rest of the app.
+    r=Math.min(255,Math.max(0,(r-20)*1.18+28));
+    g=Math.min(255,Math.max(0,(g-20)*1.18+28));
+    b=Math.min(255,Math.max(0,(b-20)*1.18+28));
+    d[i]=r; d[i+1]=g; d[i+2]=b;
+  }
+  ctx.putImageData(img,0,0);
+}
+
+async function rotatePage(i){
+  const img=await imgLoad(imageData[i]);
+  const c=document.createElement("canvas");
+  c.width=img.height;
+  c.height=img.width;
+  const ctx=c.getContext("2d");
+  ctx.translate(c.width/2,c.height/2);
+  ctx.rotate(Math.PI/2);
+  ctx.drawImage(img,-img.width/2,-img.height/2);
+  imageData[i]=c.toDataURL("image/jpeg",0.95);
+  renderPreview();
+}
+
+input.onchange=async()=>{
+  files=[...input.files];
+  imageData=[];
+  imageTypes=[];
+  preview.innerHTML="";
+
+  for(const f of files){
+    imageData.push(await fileData(f));
+    imageTypes.push((f.type||"image/jpeg").includes("png")?"PNG":"JPEG");
+  }
+
+  renderPreview();
+};
+
+function renderPreview(){
+  preview.innerHTML="";
+  imageData.forEach((src,i)=>{
+    let box=document.createElement("div");
+    box.className="thumb";
+    box.innerHTML=`
+      <span class="pageBadge">Page ${i+1}</span>
+      <img src="${src}">
+      <button type="button" onclick="openCrop(${i})">Crop</button>
+      <button type="button" class="secondary" onclick="rotatePage(${i})">Rotate</button>
+      <button type="button" class="danger" onclick="removePhoto(${i})">Remove</button>
+    `;
+    preview.appendChild(box);
+  });
+}
+
+function removePhoto(i){
+  imageData.splice(i,1);
+  imageTypes.splice(i,1);
+  renderPreview();
+}
+
+function openCrop(i){
+  cropIndex=i;
+  cropImage.src=imageData[i];
+  croppingModel.style.display="flex";
+
+  setTimeout(()=>{
+    if(cropper) cropper.destroy();
+    cropper=new Cropper(cropImage,{
+      viewMode:1,
+      autoCropArea:0.9,
+      background:false,
+      responsive:true
+    });
+  },100);
+}
+
+function rotateCrop(){
+  if(cropper) cropper.rotate(90);
+}
+
+function saveCrop(){
+  if(!cropper || cropIndex===null)return;
+  const canvas=cropper.getCroppedCanvas({
+    imageSmoothingEnabled:true,
+    imageSmoothingQuality:"high"
+  });
+  imageData[cropIndex]=canvas.toDataURL("image/jpeg",0.95);
+  closeCrop();
+  renderPreview();
+}
+
+function closeCrop(){
+  croppingModel.style.display="none";
+  if(cropper){cropper.destroy();cropper=null;}
+  cropIndex=null;
+}
+
+function cleanFileName(name){
+  name=(name||"").trim();
+  if(!name) name="PDF-"+Date.now();
+  name=name.replace(/[\\/:*?"<>|]/g,"-");
+  if(!name.toLowerCase().endsWith(".pdf")) name += ".pdf";
+  return name;
+}
+
+async function render(){
+  const list=document.getElementById("list");
+  list.innerHTML="";
+  downloadUrls.forEach(URL.revokeObjectURL);
+  downloadUrls=[];
+  await loadSaved();
+
+  if(!savedPDFs.length){
+    list.innerHTML="<li>No PDFs saved.</li>";
+    return;
+  }
+
+  savedPDFs.forEach((p,i)=>{
+    const url=URL.createObjectURL(p.blob);
+    downloadUrls.push(url);
+    let li=document.createElement("li");
+    li.draggable=true;
+    li.dataset.index=i;
+    li.dataset.id=p.id;
+    li.innerHTML=`
+      <span class="row">
+        <input class="checkbox pdfCheck" type="checkbox" data-id="${p.id}">
+        <span>${p.name}</span>
+        <span class="small">${formatSize(p.blob?.size)}</span>
+      </span>
+      <span>
+        <a href="${url}" download="${p.name}">Download</a>
+        <button class="danger" onclick="del(${p.id})">Delete</button>
+      </span>
+    `;
+    list.appendChild(li);
+  });
+}
+
+function selectAllPDFs(value){
+  document.querySelectorAll(".pdfCheck").forEach(c=>c.checked=value);
+}
+
+async function del(id){
+  await storeDelete(id);
+  await render();
+}
+
+function fileData(f){
+  return new Promise(r=>{
+    let fr=new FileReader();
+    fr.onload=()=>r(fr.result);
+    fr.readAsDataURL(f);
+  });
+}
+
+function imgLoad(src){
+  return new Promise(r=>{
+    let i=new Image();
+    i.onload=()=>r(i);
+    i.src=src;
+  });
+}
+
+async function createPDF(){
+  if(!imageData.length)return alert("Choose photos first");
+
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF("p","pt","a4");
+  const W=pdf.internal.pageSize.getWidth();
+  const H=pdf.internal.pageSize.getHeight();
+
+  for(let n=0;n<imageData.length;n++){
+    let d=imageData[n];
+    let img=await imgLoad(d);
+
+    if(n)pdf.addPage();
+
+    let mw=W-40;
+    let mh=H-40;
+    let w=mw;
+    let h=img.height*w/img.width;
+
+    if(h>mh){
+      h=mh;
+      w=img.width*h/img.height;
+    }
+
+    pdf.addImage(d,"JPEG",(W-w)/2,(H-h)/2,w,h);
+  }
+
+  const blob=pdf.output("blob");
+  const name=cleanFileName(pdfNameInput.value);
+  await loadSaved();
+  await storeAdd({
+    name,
+    blob,
+    createdAt:Date.now(),
+    order:savedPDFs.length
+  });
+
+  preview.innerHTML="";
+  input.value="";
+  pdfNameInput.value="";
+  files=[];
+  imageData=[];
+  await render();
+}
+
+async function mergeSelectedPDFs(){
+  await loadSaved();
+  const checks=[...document.querySelectorAll(".pdfCheck:checked")];
+  const ids=checks.map(c=>Number(c.dataset.id));
+
+  if(ids.length<2)return alert("Select at least 2 PDFs to merge.");
+
+  const merged=await PDFLib.PDFDocument.create();
+
+  for(const id of ids){
+    const p=savedPDFs.find(x=>x.id===id);
+    if(!p)continue;
+    const bytes=new Uint8Array(await p.blob.arrayBuffer());
+    const doc=await PDFLib.PDFDocument.load(bytes);
+    const pages=await merged.copyPages(doc,doc.getPageIndices());
+    pages.forEach(pg=>merged.addPage(pg));
+  }
+
+  const bytes=await merged.save();
+  const blob=new Blob([bytes],{type:"application/pdf"});
+  const url=URL.createObjectURL(blob);
+
+  const name=prompt("Name the merged PDF:", "Merged.pdf") || "Merged.pdf";
+  const finalName=cleanFileName(name);
+
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=finalName;
+  a.click();
+
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function clearPDFs(){
+  if(confirm("Delete all saved PDFs?")){
+    await storeClear();
+    await render();
+  }
+}
+
+async function saveOrder(){
+  for(let i=0;i<savedPDFs.length;i++){
+    savedPDFs[i].order=i;
+    await storePut(savedPDFs[i]);
+  }
+}
+
+document.addEventListener("dragstart",e=>{
+  const li=e.target.closest("li[draggable]");
+  if(li)e.dataTransfer.setData("text/plain",li.dataset.index);
+});
+document.addEventListener("dragover",e=>{
+  if(e.target.closest("li[draggable]"))e.preventDefault();
+});
+document.addEventListener("drop",async e=>{
+  const t=e.target.closest("li[draggable]");
+  if(!t)return;
+  e.preventDefault();
+  const f=Number(e.dataTransfer.getData("text/plain"));
+  const to=Number(t.dataset.index);
+  if(f===to)return;
+  const [m]=savedPDFs.splice(f,1);
+  savedPDFs.splice(to,0,m);
+  await saveOrder();
+  await render();
+});
+
+window.addEventListener("beforeunload",stopScanner);
+
+(async function init(){
+  if(!("indexedDB" in window)){
+    alert("Your browser does not support IndexedDB. Please use Chrome, Edge, Firefox, or Safari.");
+    return;
+  }
+  db=await openDB();
+  await migrateOldLocalStorage();
+  await render();
+})();
+</script>
+</body>
+</html>
